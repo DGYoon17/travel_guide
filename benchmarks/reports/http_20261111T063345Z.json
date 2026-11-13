@@ -1,0 +1,51 @@
+{
+  "mode": "http_sse",
+  "generated_at": "2026-11-11T06:33:45.703916+00:00",
+  "rows": [
+    {
+      "url": "http://127.0.0.1:18082",
+      "message": "公司差旅住宿标准是多少",
+      "concurrency": 1,
+      "requests": 10,
+      "rps": 6.78,
+      "ok": 10,
+      "errors": 0,
+      "ttft_p50_ms": 80.4,
+      "ttft_p95_ms": 628.0,
+      "total_p50_ms": 83.3,
+      "total_p95_ms": 631.0,
+      "wall_s": 1.48,
+      "error_samples": []
+    },
+    {
+      "url": "http://127.0.0.1:18082",
+      "message": "公司差旅住宿标准是多少",
+      "concurrency": 5,
+      "requests": 50,
+      "rps": 38.71,
+      "ok": 50,
+      "errors": 0,
+      "ttft_p50_ms": 97.5,
+      "ttft_p95_ms": 206.3,
+      "total_p50_ms": 108.3,
+      "total_p95_ms": 215.6,
+      "wall_s": 1.29,
+      "error_samples": []
+    },
+    {
+      "url": "http://127.0.0.1:18082",
+      "message": "公司差旅住宿标准是多少",
+      "concurrency": 10,
+      "requests": 100,
+      "rps": 49.78,
+      "ok": 100,
+      "errors": 0,
+      "ttft_p50_ms": 130.6,
+      "ttft_p95_ms": 228.9,
+      "total_p50_ms": 149.2,
+      "total_p95_ms": 249.0,
+      "wall_s": 2.01,
+      "error_samples": []
+    }
+  ]
+}

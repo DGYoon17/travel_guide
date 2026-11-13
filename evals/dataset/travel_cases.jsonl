@@ -1,0 +1,9 @@
+{"id":"policy_cabin","text":"公司差旅住宿标准是多少","slots":{},"expected_tools":["get_travel_policy"],"expect_finish":"stop"}
+{"id":"flight_search","text":"帮我查一下下周上海到北京的机票","slots":{"origin_city":"上海","destination_city":"北京","depart_date":"2027-03-10","purpose":"client"},"expected_tools":["search_flights"],"expect_finish":"stop"}
+{"id":"hotel_search","text":"帮我查一下北京的协议酒店","slots":{"destination_city":"北京","depart_date":"2027-03-10","return_date":"2027-03-12","purpose":"client"},"expected_tools":["search_hotels"],"expect_finish":"stop"}
+{"id":"plan_simple","text":"帮我安排这次出差","slots":{"origin_city":"上海","destination_city":"北京","depart_date":"2027-03-10","purpose":"client","cabin_class":"economy"},"expected_tools":["plan_trip"],"expect_finish":"stop"}
+{"id":"compliance","text":"这次出差超标了吗","slots":{"origin_city":"上海","destination_city":"北京","depart_date":"2027-03-10","purpose":"client","hotel_needed":true,"return_date":"2027-03-12"},"expected_tools":["check_travel_compliance"],"expect_finish":"stop"}
+{"id":"book_after_plan","text":"帮我订这个方案","slots":{"origin_city":"上海","destination_city":"北京","depart_date":"2027-03-10","purpose":"client"},"preplan":true,"expected_tools":["book_trip"],"expect_finish":"confirmation_required"}
+{"id":"submit_approval","text":"提交审批","slots":{"origin_city":"上海","destination_city":"北京","depart_date":"2027-03-10","purpose":"client"},"preplan":true,"expected_tools":["submit_travel_approval"],"expect_finish":"confirmation_required"}
+{"id":"low_confidence","text":"安排一下","slots":{"origin_city":"上海","destination_city":"北京","depart_date":"2027-03-10","purpose":"client"},"expected_tools":[],"expect_finish":"clarification_required"}
+{"id":"international_plan","text":"帮我安排去东京出差","slots":{"origin_city":"上海","destination_city":"东京","depart_date":"2027-03-10","purpose":"client","international":true,"passport_ready":true},"expected_tools":["plan_trip"],"expect_finish":"stop"}
