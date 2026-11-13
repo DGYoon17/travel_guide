@@ -18,6 +18,7 @@
 - **确认前二次核价**：报价变化超过 2% 直接中止，让用户按新价格重新确认
 - **真流式输出**：内容分片推送，工具调用与执行结果作为独立 SSE 事件
 - **规则降级**：模型不可用时按差标给出确定性答复，而不是 500 或空白
+- **实时数据（MCP）**：12306 车次、高德自驾/酒店/天气、黄历与航班按需查询；按行程日期与预算过滤，长途自动补航班，服务不可用时如实降级（见第 6 节）
 
 ## 2. 多范式编排
 
@@ -27,7 +28,7 @@
 |---|---|---|
 | `DIRECT` | 差标/制度问答、闲聊 | 单工具 + 一次生成，不进入多轮循环 |
 | `REACT` | 槽位不全、预订/审批等写操作、单域检索 | 原生 function calling 循环 + 确认门 |
-| `PLAN_EXECUTE` | 行程要素齐全的规划请求 | 固定模板计划：查差标 → 搜航班 → 搜酒店 → 合规校验 → 出方案 |
+| `PLAN_EXECUTE` | 行程要素齐全的规划请求 | 固定模板计划：查差标 → 搜航班 → 搜酒店 → 合规校验 → 出方案 → 补车次/自驾/天气/黄历 |
 | `CLARIFY` | 意图置信度 `< 0.85`，或规则/模型都没给出可信意图 | 不调工具，先澄清 |
 
 路由是**确定性规则**（`app/core/agent/router.py`），可单测、可解释、可回归；LLM 只参与意图分类，不决定范式。
@@ -80,14 +81,38 @@
 
 身份字段（工号/职级/部门/租户）不在模型可见的 schema 里，执行前由服务端注入；确认门存储的参数会剔除这些字段，避免一次被篡改的 Redis 记录改变"以谁的身份下单"。
 
-## 6. 可观测性
+## 6. 实时数据接入（MCP）
+
+车次、路况、酒店、天气、黄历、航班这些**实时且易变**的事实不写进知识库，也不允许模型凭常识回答，而是通过 MCP（Model Context Protocol）按需查询。
+
+| 能力 | 工具 | 关键处理 |
+|---|---|---|
+| 12306 火车票 | `query_train_tickets` | 先查城市站点代码（缓存 24h），失败退回城市名再查 |
+| 高德自驾 | `plan_driving_route` | 地理编码 → 驾车路径；取最短备选路线的距离/耗时/过路费 |
+| 高德酒店 | `search_local_hotels` | 按每晚预算生成关键词（高端/品牌/经济型），再按解析价格二次过滤 |
+| 高德天气 | `query_weather_forecast` | 按行程日期逐日匹配，超出预报范围明确说明 |
+| 八字黄历 | `query_lunar_almanac` | 农历、干支、宜忌；对"宜/忌出行"给结论，仅作文化参考 |
+| 航班 | `query_flights` | 城市名 → IATA 三字码；城际距离 ≥800km 时自动追加 |
+| 城际交通对比 | `plan_intercity_transport` | 一次调用拿到火车 + 自驾 +（长途）航班，给出确定性建议 |
+
+设计约束：
+
+- **只读**：全部是 `ToolAccess.READ`，不产生业务写入，也不进确认门；
+- **宁可缺，不许编**：服务不可用时返回 `upstream_error` 并明确"实时数据不可用"，提示模型不要用常识补齐；
+- **降级可标注**：高德不可用时自驾距离退化为"城市中心点 ×1.25"的估算，标记 `estimated=true` 并如实告知，过路费一律不给；
+- **预算内完成**：PLAN_EXECUTE 中实时查询排在方案生成之后；剩余时间不足时跳过，单项超时会被中止而不是拖垮整轮；
+- **按需注册**：未配置任何 MCP 服务时这 7 个工具根本不进 function schema，模型不会看到一批永远失败的工具。
+
+传输层同时支持两种 MCP 形态：`/sse` 的 SSE 事件流（先收 `endpoint` 事件，再 POST，按 JSON-RPC id 配对）与普通 HTTP JSON-RPC。配置、排障与测试方式见 [docs/06-实时数据MCP集成说明.md](docs/06-实时数据MCP集成说明.md)。
+
+## 7. 可观测性
 
 - OpenTelemetry 自动埋点（FastAPI/httpx）+ OTLP/Console exporter
 - 手工 Span 覆盖：`chat.turn`、`intent.recognize`、`agent.route`、`memory.recall/compress`、`tool.invoke`、`llm.turn`、`confirm.execute`
 - `X-Trace-Id` 贯通请求、审计与结构化日志；`/metrics` 暴露工具 P50、成功率、意图/范式分布、降级与预算触顶计数
 - 审计事件带 `policy_version` / `prompt_version` / 工具参数与结果
 
-## 7. 技术栈与选型
+## 8. 技术栈与选型
 
 | 技术 | 用法 | 为什么 |
 |---|---|---|
@@ -101,7 +126,7 @@
 | OpenTelemetry | 自动埋点 + 手工 Span | 排障要能分辨模型慢、检索慢还是工具慢 |
 | pytest | 差旅/采购域测试 + 金标门禁 | 意图/槽位/差标/审批链退化必须被拦住 |
 
-## 8. 目录
+## 9. 目录
 
 ```text
 app/
@@ -114,17 +139,19 @@ app/
 │  ├─ memory/trip_draft.py     # L2 行程草稿
 │  ├─ memory/travel_session.py # 差旅会话持久化
 │  ├─ tools/travel_builtin.py  # 11 个差旅工具
+│  ├─ tools/travel_mcp.py      # 7 个 MCP 实时数据工具（可选注册）
 │  ├─ prompt/travel_state.py   # 状态机与可用工具集
 │  └─ harness/                 # 预算 / 确认门 / 降级
-├─ domain/travel/              # 差旅模型、政策引擎
+├─ domain/travel/              # 差旅模型、政策引擎、城市/机场参考数据
+├─ infrastructure/mcp/         # MCP hub（HTTP/SSE）+ 实时数据解析与降级
 ├─ infrastructure/suppliers/   # 供应方适配层（当前 mock）
 └─ infrastructure/observability/spans.py
 evals/                         # 离线评测（确定性 + 模型在环）
-scripts/                       # 冒烟与无 pytest 测试运行器
+scripts/                       # 冒烟、无 pytest 测试运行器、MCP 健康检查
 tests/golden/travel_dataset.py # 差旅金标门禁
 ```
 
-## 9. 本地运行
+## 10. 本地运行
 
 ```powershell
 python -m venv .venv
@@ -135,6 +162,12 @@ Copy-Item .env.example .env
 
 docker compose up -d postgres redis etcd minio milvus-standalone
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+实时数据（可选）：在 `.env` 中配置 `MCP_12306_URL` / `MCP_GAODE_URL` / `MCP_BAZI_URL` / `MCP_FLIGHT_URL`（或一份 `MCP_SERVERS_JSON`），重启后自动注册 7 个 MCP 工具；不配置则这些工具不出现，其它功能不受影响。
+
+```powershell
+python scripts/check_mcp_health.py         # 连通性与工具列表；--json 供 CI 使用
 ```
 
 Swagger: `http://127.0.0.1:8000/docs`
@@ -149,7 +182,7 @@ python -m evals.run_eval --mode live --router off   # 单 ReAct 基线
 python scripts/smoke_travel.py                      # 无 pytest 环境的冒烟
 ```
 
-## 10. API 示例
+## 11. API 示例
 
 ```json
 POST /api/v1/chat
@@ -176,7 +209,7 @@ POST /api/v1/approvals/confirm
 重复执行同一方案（幂等键相同）返回首次结果；已完成的 `action_id` 再次确认返回 `404`；
 报价变化返回 `409`。
 
-## 11. 评测口径
+## 12. 评测口径
 
 `python -m evals.run_eval --mode deterministic` 当前结果：
 
@@ -189,24 +222,26 @@ POST /api/v1/approvals/confirm
 
 这些是**规则与政策引擎**的确定性指标，不包含模型在环质量。轮次、无效工具调用率、token 与时延必须用 `--mode live` 在固定数据集、固定模型版本、`temperature=0` 下实测；仓库不预置任何性能结论。
 
-## 12. 已知限制
+## 13. 已知限制
 
 - 供应方是 `MockTravelSupplier`，通过 `TravelSupplier` 协议抽象；接 TMC/航司时替换实现，**当前没有真实出票能力**
 - 长期偏好写入需要 Milvus 可用；未连接时自动跳过，不影响主链路
 - 金标只覆盖确定性部分；模型在环评测需要 API key 与固定数据集
 - 采购域保留为参考实现，默认注册表、主入口与文档均以差旅为准
 - `app/core/harness/fallback.py`、`app/core/prompt/templates.py` 仍是采购域遗留，差旅使用自己的降级与提示词
+- 实时数据依赖外部 MCP 服务：未配置时相关工具不注册；服务不可用时返回明确的 `upstream_error`，不会伪造车次、票价或天气
 
-## 13. 设计文档
+## 14. 设计文档
 
 | 文档 | 内容 |
 |---|---|
 | [docs/04-差旅Agent改造说明.md](docs/04-差旅Agent改造说明.md) | 领域映射、四范式路由、差标引擎、预订安全、评测结果、与简历的对应关系 |
+| [docs/06-实时数据MCP集成说明.md](docs/06-实时数据MCP集成说明.md) | MCP 传输、工具清单、解析与降级策略、配置与排障 |
 | [docs/01-记忆与Harness改造纪要.md](docs/01-记忆与Harness改造纪要.md) | 采购版历史文档：L0–L5 分层、P0→P2 实施明细 |
 | [docs/02-完整Agent应用评估与补充路线.md](docs/02-完整Agent应用评估与补充路线.md) | 采购版历史文档：成熟度评估与补齐路线 |
 | [docs/03-工具调用机制详解.md](docs/03-工具调用机制详解.md) | 采购版历史文档：工具调用生命周期 |
 
-## 14. 压测
+## 15. 压测
 
 完整操作见 [benchmarks/README.md](benchmarks/README.md)。分三层：
 

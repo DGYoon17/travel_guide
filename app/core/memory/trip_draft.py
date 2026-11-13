@@ -8,6 +8,8 @@
 
 差旅特有的部分是 `last_plan` / `selected_flight` / `selected_hotel`：
 它们不是槽位，而是工具产出的结构化结果，预订确认门要拿它做快照与二次校验。
+`last_transport` / `last_weather` / `last_almanac` / `last_hotels` 同理：实时数据（MCP）
+的结果快照不进指纹、不参与审批，只用于后续轮次的提示词与追问。
 """
 
 from __future__ import annotations
@@ -137,6 +139,12 @@ class TripDraft(BaseModel):
     submitted_approval_no: str | None = None
     #: `build_travel_request` 产出的出差申请单草稿。
     last_request: dict[str, Any] | None = None
+    #: 实时数据工具（MCP）的最近一次结果快照。不是槽位，不进指纹，只用于提示词与追问。
+    #: 存快照而不是原文，是为了让"上周问的天气"不会在下一轮被当成当前天气引用。
+    last_transport: dict[str, Any] | None = None
+    last_weather: dict[str, Any] | None = None
+    last_almanac: dict[str, Any] | None = None
+    last_hotels: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ 读取
     def value(self, field: str) -> Any:

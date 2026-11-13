@@ -14,7 +14,7 @@
 | `PurchaseRequisition` | `Itinerary` + `ItinerarySegment` + `TravelOffer` |
 | 请购单提交审批 | 机票/酒店**组合预订** + 出差审批 |
 | 供应商准入 | 协议价/差标校验 |
-| 6 个采购工具 | 11 个差旅工具 |
+| 6 个采购工具 | 11 个差旅工具 + 可选 7 个 MCP 实时数据工具 |
 
 关键文件：
 
@@ -113,7 +113,8 @@
 测试：
 
 - 新增 42 项差旅测试（政策、路由、工具、编排、金标）
-- 离线运行器 `python scripts/run_tests_lite.py`：158 通过，0 失败
+- 新增 73 项实时数据（MCP）测试：传输（HTTP/SSE）、解析与降级、工具行为、PLAN_EXECUTE 端到端
+- 离线运行器 `python scripts/run_tests_lite.py`：231 通过，0 失败
 - 采购旧测试里依赖"下周五"的用例已固定到参考日，避免随时间腐烂
 
 模型在环指标（轮次、无效工具调用率、token、时延）必须用：
@@ -131,7 +132,7 @@ python -m evals.run_eval --mode live --router off
 
 | 简历原句 | 现在是否成立 | 证据 |
 |---|---|---|
-| 企业差旅场景，行程咨询/差标解读/预订辅助 | ✅ | 11 个差旅工具、差标引擎、预订确认门 |
+| 企业差旅场景，行程咨询/差标解读/预订辅助 | ✅ | 11 个差旅工具（+ 可选 7 个 MCP 实时数据工具）、差标引擎、预订确认门 |
 | 多模式 Agent 编排、动态路由范式 | ✅ | `app/core/agent/router.py` 四范式 + 单测 |
 | 低置信度触发校验 | ✅ | `UNKNOWN` + 0.85 阈值 + `CLARIFY`，阈值两侧可达 |
 | 工具失败触发校验/自修正 | ✅ | 字段级 `field_issues` 回喂，最多 2 轮 |
@@ -156,3 +157,14 @@ python -m evals.run_eval --mode live --router off
 - `app/core/harness/fallback.py` 与 `app/core/prompt/templates.py` 仍是采购域遗留，差旅使用
   `TravelOrchestrator._degraded_reply` 与自己的系统提示
 - 采购域测试保留，用于验证共享内核没有退化
+
+---
+
+## 九、实时数据（MCP）增量
+
+在 11 个差旅工具之外新增 7 个**只读**实时数据工具：12306 车次（自动站点代码）、高德自驾
+（距离/耗时/过路费）、高德酒店（按预算筛选）、高德天气（多日预报）、八字黄历、航班（长途自动触发）、
+城际交通对比。它们仅在配置了 MCP 服务时注册，不参与差标与预订；PLAN_EXECUTE 在方案生成后追加查询，
+结果写 L2 快照供后续轮次引用，服务不可用时按 `upstream_error` 如实降级。
+
+协议实现、解析策略、配置与排障见 `docs/06-实时数据MCP集成说明.md`。

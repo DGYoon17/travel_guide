@@ -67,6 +67,28 @@ class Settings(BaseSettings):
     #: 预订确认前允许的报价波动；超过即中止并要求重新确认。
     booking_price_tolerance: float = 0.02
 
+    # ---------------------------------------------------------------- 实时数据（MCP）
+    #: 关闭后不注册任何实时数据工具，"查车次/天气/黄历"会如实回答不可用。
+    mcp_enabled: bool = True
+    #: 传输方式：auto（按 URL 推断，`/sse` 结尾走 SSE，其余走 HTTP JSON-RPC）/ http / sse。
+    mcp_transport: str = "auto"
+    #: 四个内置 MCP 服务。留空即视为"该能力未接入"，工具不会注册。
+    mcp_12306_url: str = ""
+    mcp_gaode_url: str = ""
+    mcp_bazi_url: str = ""
+    mcp_flight_url: str = ""
+    #: 多服务器 JSON（数组或 {"mcp_servers": [...]}），给出后覆盖上面四个单 URL 字段。
+    #: 形如 [{"name":"Gaode Server","url":"https://.../sse","transport":"sse","headers":{...}}]
+    mcp_servers_json: str = ""
+    #: 也可指向参考项目那份 servers_config.json，便于从旧项目直接迁移。
+    mcp_servers_config_path: str = ""
+    mcp_timeout_seconds: float = 25.0
+    mcp_max_retries: int = 2
+    #: 站点代码缓存时长：12306 站名极少变化，没必要每轮都查。
+    mcp_station_code_ttl_seconds: int = 86400
+    #: 城际距离超过该阈值时自动查询航班。低于阈值只查火车 + 自驾。
+    flight_auto_trigger_km: float = 800.0
+
     # ---------------------------------------------------------------- Harness 预算
     harness_max_iterations: int = 8
     harness_max_tool_calls: int = 12
@@ -131,6 +153,22 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    @property
+    def mcp_configured(self) -> bool:
+        """是否至少配置了一个实时数据服务。未配置时 MCP 工具不注册。"""
+        if not self.mcp_enabled:
+            return False
+        if self.mcp_servers_json.strip() or self.mcp_servers_config_path.strip():
+            return True
+        return any(
+            (
+                self.mcp_12306_url,
+                self.mcp_gaode_url,
+                self.mcp_bazi_url,
+                self.mcp_flight_url,
+            )
+        )
 
 
 settings = Settings()

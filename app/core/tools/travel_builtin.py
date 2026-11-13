@@ -940,9 +940,20 @@ def register_travel_tools(registry: ToolRegistry) -> None:
     )
 
 
-def build_travel_registry() -> ToolRegistry:
+def build_travel_registry(*, include_mcp: bool = False) -> ToolRegistry:
+    """构建差旅工具注册表。
+
+    `include_mcp=True` 时追加实时数据工具（12306/高德/黄历/航班）。默认不注册，
+    因为这些工具必须有可用的 MCP 网关才有意义；没有配置时让模型看到一批永远失败
+    的工具，比看不到更糟。
+    """
     registry = ToolRegistry()
     register_travel_tools(registry)
+    if include_mcp:
+        # 延迟导入：未接入 MCP 的部署（单测、离线评测）不需要加载传输层依赖。
+        from app.core.tools.travel_mcp import register_mcp_tools
+
+        register_mcp_tools(registry)
     return registry
 
 

@@ -71,6 +71,17 @@ async def health(request: Request) -> HealthStatus:
     if not checks["auth"]:
         details.append("auth:鉴权组件未初始化")
 
+    # ---------------------------------------------------------------- MCP 实时数据
+    # 未配置只意味着"没有实时车次/天气能力"，属于可选增强，不参与 overall status 判定。
+    mcp_hub = getattr(state, "mcp", None)
+    checks["mcp"] = mcp_hub is not None
+    if mcp_hub is None:
+        details.append("mcp:未启用或未配置实时数据服务（车次/自驾/酒店/天气/黄历/航班不可用）")
+    else:
+        details.append(
+            "mcp:已接入 " + "、".join(f"{c.name}({c.resolved_transport})" for c in mcp_hub.servers)
+        )
+
     # 鉴权不可用是硬故障：接口会全线 401/503，不应报成 degraded。
     if not checks["auth"]:
         status: Any = "unhealthy"

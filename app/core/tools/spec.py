@@ -54,6 +54,8 @@ class ToolContext:
     knowledge: Any | None = None
     #: 差旅供应方（航班/酒店/预订）。采购域不使用。
     supplier: Any | None = None
+    #: 实时数据网关（MCP）。为 None 时实时数据工具不在注册表中，模型不会看到它们。
+    mcp: Any | None = None
     #: 预订结果持久化（PostgreSQL）。为 None 时只保留供应方侧订单，不影响主链路。
     booking_repo: Any | None = None
 

@@ -30,6 +30,7 @@ from app.core.tools.travel_builtin import build_travel_registry
 from app.domain.travel.policy import default_travel_policy
 from app.infrastructure.llm.circuit_breaker import get_llm_circuit_breaker
 from app.infrastructure.llm.client import LLMClient
+from app.infrastructure.mcp.hub import build_mcp_hub
 from app.infrastructure.observability.metrics import MetricsCollector
 from app.infrastructure.suppliers.mock_travel import MockTravelSupplier
 from app.infrastructure.vector.milvus_client import MilvusVectorClient, ensure_memory_collection
@@ -173,8 +174,24 @@ async def lifespan(app: FastAPI):
     app.state.milvus = store
     logger.info("milvus.status", connected=store.connected)
 
+    # ---------------------------------------------------------------- 实时数据（MCP）
+    # 未配置任何 MCP 服务时 hub 为 None：不注册实时数据工具，模型不会看到一批永远失败的工具。
+    app.state.mcp = None
+    try:
+        app.state.mcp = build_mcp_hub(settings)
+        if app.state.mcp is None:
+            logger.info("mcp.unavailable", hint="设置 MCP_GAODE_URL / MCP_12306_URL 可接入实时数据")
+        else:
+            logger.info(
+                "mcp.hub_ready",
+                servers=[config.name for config in app.state.mcp.servers],
+                transports=[config.resolved_transport for config in app.state.mcp.servers],
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("mcp.hub_failed", error=str(exc))
+
     # ---------------------------------------------------------------- 差旅供应方与工具
-    registry = build_travel_registry()
+    registry = build_travel_registry(include_mcp=app.state.mcp is not None)
     app.state.tool_registry = registry
     app.state.tool_names = registry.names()
     app.state.supplier = MockTravelSupplier()
@@ -227,6 +244,7 @@ async def lifespan(app: FastAPI):
             supplier=app.state.supplier,
             booking_repo=app.state.booking_repo,
             long_term=long_term,
+            mcp=app.state.mcp,
             router=(
                 BaselineRouter()
                 if settings.router_mode.lower() == "off"
@@ -239,6 +257,7 @@ async def lifespan(app: FastAPI):
             provider=settings.llm_provider,
             model=settings.llm_model,
             long_term=long_term is not None,
+            mcp=app.state.mcp is not None,
         )
     except Exception as exc:  # noqa: BLE001
         # 缺 API key 时不阻塞启动：/health 仍可用，/chat 返回 503 并说明原因。
@@ -249,6 +268,12 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    mcp_hub = getattr(app.state, "mcp", None)
+    if mcp_hub is not None:
+        try:
+            await mcp_hub.aclose()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mcp.close_failed", error=str(exc))
     if app.state.redis is not None:
         await app.state.redis.aclose()
     engine = getattr(app.state, "db_engine", None)
