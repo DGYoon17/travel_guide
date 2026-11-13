@@ -186,11 +186,14 @@ app/
 │  ├─ tools/travel_builtin.py  # 11 个差旅工具
 │  ├─ tools/travel_mcp.py      # 7 个 MCP 实时数据工具（可选注册）
 │  ├─ prompt/travel_state.py   # 状态机与可用工具集
+│  ├─ skills/                  # 技能层：加载 / 选择 / 契约（规划中，见第 7 节）
 │  └─ harness/                 # 预算 / 确认门 / 降级
 ├─ domain/travel/              # 差旅模型、政策引擎、城市/机场参考数据
 ├─ infrastructure/mcp/         # MCP hub（HTTP/SSE）+ 实时数据解析与降级
 ├─ infrastructure/suppliers/   # 供应方适配层（当前 mock）
 └─ infrastructure/observability/spans.py
+skills/                        # SKILL.md 技能清单（规划中，见第 7 节）
+docs/                          # 设计文档：04 差旅改造、06 MCP 集成、07 Skills 能力层
 evals/                         # 离线评测（确定性 + 模型在环）
 scripts/                       # 冒烟、无 pytest 测试运行器、MCP 健康检查
 tests/golden/travel_dataset.py # 差旅金标门禁
